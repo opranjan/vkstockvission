@@ -3,6 +3,8 @@ const nodemailer = require("nodemailer");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const mongoose = require("mongoose");
+const jwt = require("jsonwebtoken");
 
 dotenv.config();
 
@@ -11,6 +13,9 @@ app.use(cors());
 app.use(bodyParser.json({ limit: "10mb" }));
 
 const multer = require("multer");
+const FormSubmission = require("./models/UserData");
+const EnquirySchema = require("./models/EnquirySchema");
+const Admin = require("./models/Admin");
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
@@ -26,67 +31,275 @@ const transporter = nodemailer.createTransport({
 });
 
 // POST route to receive form data and send email
-app.post("/send-email", (req, res) => {
-  const { firstname, lastname, mobile, email, trading, segment, investment } =
-    req.body;
+// app.post("/send-email", (req, res) => {
+//   const { firstname, lastname, mobile, email, trading, segment, investment } =
+//     req.body;
 
-  // Email content
-  const mailOptions = {
-    from: process.env.SMTP_USER,
-    to: [ process.env.SMTP_USER],  //process.env.RECIPIENT_EMAIL,
-    subject: "Form Submission Details",
-    text: `Form Details:
-    - First Name: ${firstname}
-    - Last Name: ${lastname}
-    - Mobile: ${mobile}
-    - Email: ${email}
-    - Currently Trading?: ${trading}
-    - Segment: ${segment}
-    - Investment: ${investment}
-    `,
-  };
+//   // Email content
+//   const mailOptions = {
+//     from: process.env.SMTP_USER,
+//     to: [ process.env.SMTP_USER],  //process.env.RECIPIENT_EMAIL,
+//     subject: "Form Submission Details",
+//     text: `Form Details:
+//     - First Name: ${firstname}
+//     - Last Name: ${lastname}
+//     - Mobile: ${mobile}
+//     - Email: ${email}
+//     - Currently Trading?: ${trading}
+//     - Segment: ${segment}
+//     - Investment: ${investment}
+//     `,
+//   };
 
-  // Send email
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      return res.status(500).json({ message: "Error sending email", error });
-    } else {
-      return res.status(200).json({ message: "Email sent successfully", info });
-    }
-  });
+//   // Send email
+//   transporter.sendMail(mailOptions, (error, info) => {
+//     if (error) {
+//       return res.status(500).json({ message: "Error sending email", error });
+//     } else {
+//       return res.status(200).json({ message: "Email sent successfully", info });
+//     }
+//   });
+// });
+
+
+
+
+// Connect to MongoDB
+mongoose
+  .connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log("MongoDB Connected"))
+  .catch(err => console.error("MongoDB Connection Error:", err));
+
+
+
+
+// POST route to save form data
+app.post("/send-email", async (req, res) => {
+  try {
+    const { firstname, lastname, mobile, email, trading, segment, investment } = req.body;
+    
+    // Save to database
+    const newSubmission = new FormSubmission({
+      firstname,
+      lastname,
+      mobile,
+      email,
+      trading,
+      segment,
+      investment,
+    });
+    await newSubmission.save();
+    
+    res.status(200).json({ message: "Form submitted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Error processing request", error });
+  }
 });
 
 
 
 
-// POST route to receive form data and send email
-app.post("/enquiry-now", (req, res) => {
-  const { name, email, phone,  subject, message } =
-    req.body;
-
-  // Email content
-  const mailOptions = {
-    from: process.env.SMTP_USER,
-    to: [process.env.RECIPIENT_EMAIL, process.env.SMTP_USER],
-    subject: "Form Submission Details",
-    text: `Form Details:
-    - Name: ${name}
-    - Email: ${email}
-    - Mobile: ${phone}
-    - Subject: ${subject}
-    - Message: ${message}
-    `,
-  };
-
-  // Send email
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      return res.status(500).json({ message: "Error sending email", error });
-    } else {
-      return res.status(200).json({ message: "Email sent successfully", info });
-    }
-  });
+app.get("/send-email", async (req, res) => {
+  try {
+    const submissions = await FormSubmission.find().sort({ createdAt: -1 }); // Latest first
+    res.status(200).json({ success: true, data: submissions });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching data", error: error.message });
+  }
 });
+
+
+
+
+// DELETE Enquiry by ID
+app.delete("/send-email/:id", async (req, res) => {
+  try {
+    const enquiryId = req.params.id;
+
+    // Check if enquiry exists
+    const enquiry = await FormSubmission.findById(enquiryId);
+    if (!enquiry) {
+      return res.status(404).json({ message: "Enquiry not found" });
+    }
+
+    // Delete enquiry
+    await FormSubmission.findByIdAndDelete(enquiryId);
+    res.status(200).json({ message: "Enquiry deleted successfully" });
+  } catch (error) {
+    console.error("Delete Error:", error);
+    res.status(500).json({ message: "Error deleting enquiry", error: error.message || error });
+  }
+});
+
+
+
+
+
+// // POST route to receive form data and send email
+// app.post("/enquiry-now", (req, res) => {
+//   const { name, email, phone,  subject, message } =
+//     req.body;
+
+//   // Email content
+//   const mailOptions = {
+//     from: process.env.SMTP_USER,
+//     to: [process.env.RECIPIENT_EMAIL, process.env.SMTP_USER],
+//     subject: "Form Submission Details",
+//     text: `Form Details:
+//     - Name: ${name}
+//     - Email: ${email}
+//     - Mobile: ${phone}
+//     - Subject: ${subject}
+//     - Message: ${message}
+//     `,
+//   };
+
+//   // Send email
+//   transporter.sendMail(mailOptions, (error, info) => {
+//     if (error) {
+//       return res.status(500).json({ message: "Error sending email", error });
+//     } else {
+//       return res.status(200).json({ message: "Email sent successfully", info });
+//     }
+//   });
+// });
+
+
+
+
+
+
+
+
+
+
+// 📌 POST route to save form enquiry data
+app.post("/enquiry-now", async (req, res) => {
+  try {
+    const { name, email, phone, subject, message } = req.body;
+
+    // Create a new enquiry document
+    const newEnquiry = new EnquirySchema({
+      name,
+      email,
+      phone,
+      subject,
+      message,
+    });
+
+    // Save to database
+    await newEnquiry.save();
+
+    res.status(200).json({ success: true, message: "Enquiry submitted successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error processing request", error: error.message });
+  }
+});
+
+// 📌 GET route to fetch all form enquiries
+app.get("/enquiry-now", async (req, res) => {
+  try {
+    const enquiries = await EnquirySchema.find().sort({ createdAt: -1 }); // Get latest first
+    res.status(200).json({ success: true, data: enquiries });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching data", error: error.message });
+  }
+});
+
+
+
+
+
+// DELETE Enquiry by ID
+app.delete("/enquiry-now/:id", async (req, res) => {
+  try {
+    const enquiryId = req.params.id;
+
+    // Check if enquiry exists
+    const enquiry = await EnquirySchema.findById(enquiryId);
+    if (!enquiry) {
+      return res.status(404).json({ message: "Enquiry not found" });
+    }
+
+    // Delete enquiry
+    await EnquirySchema.findByIdAndDelete(enquiryId);
+    res.status(200).json({ message: "Enquiry deleted successfully" });
+  } catch (error) {
+    console.error("Delete Error:", error);
+    res.status(500).json({ message: "Error deleting enquiry", error: error.message || error });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+// **Admin Registration Route (For First-Time Use)**
+app.post("/register", async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    
+    // Check if the admin already exists
+    const existingAdmin = await Admin.findOne({ email });
+    if (existingAdmin) {
+      return res.status(400).json({ message: "Admin already exists" });
+    }
+
+    // Create new admin
+    const newAdmin = new Admin({ username, email, password });
+    await newAdmin.save();
+
+    res.status(201).json({ message: "Admin registered successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Error registering admin", error });
+  }
+});
+
+
+
+// Admin Login Route
+app.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Check if admin exists
+    const admin = await Admin.findOne({ email });
+    if (!admin) {
+      return res.status(400).json({ message: "Admin not found" });
+    }
+
+    // Check if password matches
+    const isMatch = await admin.comparePassword(password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
+
+    // Generate JWT Token
+    const token = jwt.sign({ adminId: admin._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+
+    res.status(200).json({ message: "Login successful", token });
+  } catch (error) {
+    console.error("Login Error:", error);
+    res.status(500).json({ message: "Error logging in", error: error.message || error });
+  }
+});
+
+
+
+
+
+
+
+
+
 
 // POST route to receive user consent form data with images uploaded as files
 app.post(
